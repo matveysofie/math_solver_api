@@ -1,33 +1,29 @@
-from datetime import datetime, timedelta
+import jwt
+import sqlite3
+import os
 
 from fastapi import APIRouter
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from jose import jwt
+from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
+from datetime import datetime, timedelta
 
-from math_solver_app.models import User
 from math_solver_app.settings import get_settings
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(BASE_DIR, "../database/users.db")
+
 
 settings = get_settings()
 
 router = APIRouter()
 
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-SECRET_KEY = "your-secret-key"
+SECRET_KEY = "mysecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-
-def get_user(username: str):
-    pass
-
-
-def create_user(user: User):
-    pass
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def verify_password(plain_password, hashed_password):
@@ -46,31 +42,23 @@ def create_access_token(data: dict, expires_delta: timedelta):
     return encoded_jwt
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(user: User):
-    hashed_password = get_password_hash(user.password)
-    db_user = User(username=user.username, hashed_password=hashed_password)
-    create_user(db_user)
-    return {"detail": "User successfully registered"}
+@router.post("/register/")
+def register(username: str, password: str):
+    hashed_password = get_password_hash(password)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO user (username, password) VALUES (?,?)", (username, hashed_password))
+    conn.commit()
+    cursor.execute("SELECT id FROM user WHERE username=?", (username,))
+    user_id = cursor.fetchone()[0]
 
-
-@router.post("/token")
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = get_user(form_data.username)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user_id},
+        expires_delta=access_token_expires
     )
+
+    cursor.execute("INSERT INTO session (user_id, token) VALUES (?,?)", (user_id, access_token))
+    conn.commit()
+
     return {"access_token": access_token, "token_type": "bearer"}

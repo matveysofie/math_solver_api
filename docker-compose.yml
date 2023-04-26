@@ -1,16 +1,5 @@
 version: "3"
 services:
-  postgres:
-    image: postgres:latest
-    volumes:
-      - ./pg_data:/var/lib/postgresql/data
-    networks:
-      - default
-    env_file:
-      - cost_calc_api/.env
-    ports:
-      - "5432:5432"
-
   math_solver_app:
     build:
       context: .
@@ -20,6 +9,8 @@ services:
       - default
     ports:
       - "8000:8000"
+    volumes:
+      - ./database:/users.db
 
 volumes:
     data:
